@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Body Metrics</title>
+
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #000;
+    color: #fff;
+    margin: 0;
+  }
+  .container {
+    max-width: 420px;
+    margin: auto;
+    padding: 16px;
+  }
+  h1 {
+    text-align: center;
+    font-weight: 500;
+    letter-spacing: 1px;
+  }
+  .card {
+    background: #111;
+    padding: 16px;
+    margin-bottom: 14px;
+    border-radius: 14px;
+    border: 1px solid #222;
+  }
+  .big {
+    font-size: 34px;
+    font-weight: 700;
+    text-align: center;
+  }
+  .sub {
+    text-align: center;
+    color: #aaa;
+    font-size: 14px;
+  }
+  input, select, button {
+    width: 100%;
+    padding: 12px;
+    font-size: 15px;
+    margin-top: 8px;
+    border-radius: 10px;
+    border: 1px solid #333;
+    background: #000;
+    color: #fff;
+  }
+  button {
+    background: #fff;
+    color: #000;
+    font-weight: 600;
+  }
+  .row {
+    display: flex;
+    gap: 8px;
+  }
+  .row > * { flex: 1; }
+  canvas {
+    width: 100%;
+    height: 180px;
+  }
+  .coach {
+    color: #ccc;
+    font-size: 14px;
+  }
+</style>
+</head>
+
+<body>
+<div class="container">
+  <h1>BODY METRICS</h1>
+
+  <div class="card">
+    <div class="big" id="targetCalories">—</div>
+    <div class="sub">Daily Calorie Target</div>
+  </div>
+
+  <div class="card">
+    <canvas id="chart"></canvas>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <input id="weightInput" type="number" step="0.1" placeholder="Weight (kg)" />
+      <input id="intakeInput" type="number" placeholder="Calories eaten today" />
+    </div>
+    <button onclick="logDay()">Log Day</button>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <input id="heightInput" type="number" placeholder="Height (cm)" />
+      <select id="sexInput">
+        <option value="male">Male</option>
+        <option value="female">Female</option>
+      </select>
+    </div>
+    <button onclick="saveProfile()">Save Body Info</button>
+  </div>
+
+  <div class="card">
+    <input id="targetWeightInput" type="number" step="0.1" placeholder="Target weight (kg)" />
+    <button onclick="setTargetWeight()">Set Target Weight</button>
+  </div>
+
+  <div class="card">
+    <div class="coach" id="coachText">Log your data to receive insights.</div>
+  </div>
+</div>
+
+<script>
+  let profile = JSON.parse(localStorage.getItem("profile")) || {
+    height: 175,
+    sex: "male",
+    age: 30,
+    activity: 1.55
+  };
+
+  let data = JSON.parse(localStorage.getItem("data")) || [];
+  let targetWeight = Number(localStorage.getItem("targetWeight")) || null;
+  let calorieTarget = Number(localStorage.getItem("calorieTarget")) || null;
+
+  heightInput.value = profile.height;
+  sexInput.value = profile.sex;
+
+  function bmi(weight) {
+    const h = profile.height / 100;
+    return weight / (h * h);
+  }
+
+  function maintenance(weight) {
+    const sexConst = profile.sex === "male" ? 5 : -161;
+    return Math.round(
+      (10 * weight +
+       6.25 * profile.height -
+       5 * profile.age +
+       sexConst) * profile.activity
+    );
+  }
+
+  function today() {
+    return new Date().toISOString().slice(0,10);
+  }
+
+  function saveProfile() {
+    profile.height = parseFloat(heightInput.value);
+    profile.sex = sexInput.value;
+    localStorage.setItem("profile", JSON.stringify(profile));
+    update();
+  }
+
+  function logDay() {
+    const w = parseFloat(weightInput.value);
+    const i = parseInt(intakeInput.value);
+    if (!w || !i) return;
+
+    data.push({ date: today(), weight: w, intake: i });
+    localStorage.setItem("data", JSON.stringify(data));
+    weightInput.value = intakeInput.value = "";
+    update();
+  }
+
+  function setTargetWeight() {
+    targetWeight = parseFloat(targetWeightInput.value);
+    localStorage.setItem("targetWeight", targetWeight);
+    update();
+  }
+
+  function drawChart() {
+    const c = chart, ctx = c.getContext("2d");
+    c.width = c.offsetWidth; c.height = 180;
+    ctx.clearRect(0,0,c.width,c.height);
+    if (data.length < 2) return;
+
+    const vals = data.map(d => d.weight);
+    const min = Math.min(...vals), max = Math.max(...vals);
+
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+
+    data.forEach((d,i) => {
+      const x = (i/(data.length-1))*(c.width-20)+10;
+      const y = c.height - ((d.weight-min)/(max-min||1))*(c.height-20) - 10;
+      i ? ctx.lineTo(x,y) : ctx.moveTo(x,y);
+    });
+
+    ctx.stroke();
+  }
+
+  function analyze() {
+    if (data.length < 7) {
+      return "Log at least 7 days for full analysis.";
+    }
+
+    const start = data[data.length-7].weight;
+    const end = data[data.length-1].weight;
+    const delta = end - start;
+    const bmiVal = bmi(end).toFixed(1);
+
+    let trend =
+      delta < -0.25 ? "losing weight" :
+      delta > 0.25 ? "gaining weight" :
+      "stagnant";
+
+    let goal =
+      targetWeight == null ? "" :
+      Math.abs(end - targetWeight) < 0.3 ? "You are at your target weight." :
+      (end > targetWeight && delta < 0) || (end < targetWeight && delta > 0)
+        ? "You are on track toward your goal."
+        : "You are moving away from your goal.";
+
+    return `You are currently ${trend}. BMI ${bmiVal}. ${goal}`;
+  }
+
+  function update() {
+    if (data.length) {
+      const m = maintenance(data[data.length-1].weight);
+      calorieTarget = Math.round(m - 400);
+      localStorage.setItem("calorieTarget", calorieTarget);
+    }
+
+    targetCalories.textContent = calorieTarget
+      ? calorieTarget + " kcal"
+      : "Enter your first weight";
+
+    coachText.textContent = analyze();
+    drawChart();
+  }
+
+  update();
+</script>
+</body>
+</html>
